@@ -1,0 +1,276 @@
+---
+import { hashPassword, createSession, verifySession } from '../lib/auth';
+import { db } from '../lib/db';
+import '../styles/global.css';
+
+let error = '';
+let success = false;
+let token = '';
+let callsignStr = '';
+let rankStr = '';
+
+// Check if already authenticated
+const user = await verifySession(Astro.request);
+if (user) {
+  return Astro.redirect('/');
+}
+
+if (Astro.request.method === 'POST') {
+  try {
+    const data = await Astro.request.formData();
+    const callsign = data.get('callsign')?.toString();
+    const password = data.get('password')?.toString();
+    const confirm = data.get('confirm')?.toString();
+
+    if (!callsign || !password || !confirm) {
+      error = 'ALL FIELDS REQUIRED';
+    } else if (password !== confirm) {
+      error = 'CREDENTIAL MISMATCH — RETRY';
+    } else {
+      const existing = db.prepare('SELECT id FROM users WHERE callsign = ?').get(callsign);
+      if (existing) {
+        error = 'CALLSIGN UNAVAILABLE — CHOOSE ANOTHER';
+      } else {
+        const hash = await hashPassword(password);
+        const info = db.prepare(`
+          INSERT INTO users (callsign, password_hash, settings) 
+          VALUES (?, ?, ?)
+        `).run(callsign, hash, JSON.stringify({ boot_sequence_enabled: true }));
+        
+        const userId = info.lastInsertRowid as number;
+        
+        // Setup initial rank for user
+        db.prepare('INSERT INTO rank (user_id, current_rank, xp) VALUES (?, ?, ?)').run(userId, 'PACKET_MONKEY', 0);
+        
+        token = await createSession(userId, callsign);
+        Astro.cookies.set('pp_session', token, {
+          path: '/',
+          httpOnly: true,
+          secure: import.meta.env.PROD,
+          sameSite: 'lax',
+          maxAge: 60 * 60 * 24 * 7 // 7 days
+        });
+
+        success = true;
+        callsignStr = callsign;
+        rankStr = 'PACKET MONKEY'; // Default rank
+      }
+    }
+  } catch (err) {
+    error = 'SYSTEM ERROR — REGISTRATION FAILED';
+  }
+}
+---
+
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width" />
+		<title>PROTOCOL POLICE | Operator Clearance</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&display=swap" rel="stylesheet">
+    <style>
+      body {
+        background-color: #09090b;
+        color: #f4f4f5;
+        font-family: 'JetBrains Mono', monospace;
+        margin: 0;
+        height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+      }
+      body::before {
+        content: " ";
+        display: block;
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        right: 0;
+        background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+        z-index: 1000;
+        background-size: 100% 4px, 3px 100%;
+        pointer-events: none;
+      }
+      .terminal-container {
+        border: 1px solid #27272a;
+        padding: 40px;
+        background: #18181b;
+        width: 400px;
+        box-shadow: 0 0 20px rgba(0,0,0,0.5);
+      }
+      .header-title {
+        font-size: 1.5rem;
+        font-weight: 800;
+        margin-bottom: 0.5rem;
+        text-align: center;
+      }
+      .header-subtitle {
+        font-size: 0.75rem;
+        text-align: center;
+        letter-spacing: 0.2em;
+        color: #71717a;
+        margin-bottom: 2rem;
+      }
+      .divider {
+        text-align: center;
+        color: #52525b;
+        margin-bottom: 2rem;
+        font-size: 0.8rem;
+      }
+      .form-group {
+        margin-bottom: 1.5rem;
+      }
+      .form-group label {
+        display: block;
+        font-size: 0.8rem;
+        color: #a1a1aa;
+        margin-bottom: 0.5rem;
+      }
+      .form-group input {
+        width: 100%;
+        background: #09090b;
+        border: 1px solid #3f3f46;
+        color: #f4f4f5;
+        padding: 0.75rem;
+        font-family: 'JetBrains Mono', monospace;
+        box-sizing: border-box;
+      }
+      .form-group input:focus {
+        outline: none;
+        border-color: #e11d48;
+        box-shadow: 0 0 10px rgba(225,29,72,0.2);
+      }
+      .btn-submit {
+        width: 100%;
+        background: #e11d48;
+        color: #fff;
+        border: none;
+        padding: 1rem;
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: bold;
+        cursor: pointer;
+        margin-top: 1rem;
+        transition: background 0.2s;
+      }
+      .btn-submit:hover {
+        background: #be123c;
+      }
+      .links {
+        text-align: center;
+        margin-top: 2rem;
+        font-size: 0.8rem;
+      }
+      .links a {
+        color: #71717a;
+        text-decoration: none;
+      }
+      .links a:hover {
+        color: #a1a1aa;
+      }
+      .error {
+        color: #ef4444;
+        text-align: center;
+        margin-bottom: 1rem;
+        font-size: 0.9rem;
+        animation: flash 0.5s ease-in-out;
+      }
+      @keyframes flash {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0; }
+      }
+      /* Boot sequence overlay */
+      #boot-overlay {
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        background: #09090b;
+        z-index: 9999;
+        display: none;
+        flex-direction: column;
+        justify-content: flex-start;
+        padding: 40px;
+        color: #10b981;
+        font-size: 1.2rem;
+      }
+      .boot-line {
+        margin-bottom: 0.5rem;
+        white-space: pre-wrap;
+      }
+    </style>
+	</head>
+	<body>
+    {success ? (
+      <div id="boot-overlay"></div>
+      <script define:vars={{ callsign: callsignStr, rank: rankStr }}>
+        const lines = [
+          "PROTOCOL POLICE OS v2.4.1",
+          "INITIALIZING SECURE ENVIRONMENT...",
+          `LOADING OPERATOR PROFILE: ${callsign.toUpperCase()}`,
+          `CLEARANCE LEVEL: ${rank.toUpperCase()}`,
+          "VERIFYING DOSSIER INTEGRITY... OK",
+          "ESTABLISHING ENCRYPTED CHANNEL... OK",
+          "LOADING ZAHRA COMPANION MODULE... OK",
+          "",
+          `WELCOME BACK, OPERATOR ${callsign.toUpperCase()}.`,
+          "ZAHRA IS ONLINE AND WAITING.",
+          "",
+          "[ PRESS ANY KEY OR WAIT TO CONTINUE ]"
+        ];
+        
+        const overlay = document.getElementById('boot-overlay');
+        overlay.style.display = 'flex';
+        
+        let i = 0;
+        function showLine() {
+          if (i < lines.length) {
+            const div = document.createElement('div');
+            div.className = 'boot-line';
+            div.textContent = '> ' + lines[i];
+            overlay.appendChild(div);
+            i++;
+            setTimeout(showLine, 200);
+          } else {
+            setTimeout(() => {
+              window.location.href = '/';
+            }, 3000);
+          }
+        }
+        showLine();
+
+        window.addEventListener('keydown', () => {
+          window.location.href = '/';
+        });
+      </script>
+    ) : (
+      <div class="terminal-container">
+        <div class="header-title">OPERATOR CLEARANCE REQUEST</div>
+        <div class="header-subtitle">NEW AGENT ENROLLMENT PROTOCOL</div>
+        <div class="divider">━━━ REGISTRATION ━━━</div>
+        
+        {error && <div class="error">{error}</div>}
+        
+        <form method="POST">
+          <div class="form-group">
+            <label>CHOOSE CALLSIGN:</label>
+            <input type="text" name="callsign" autocomplete="off" required spellcheck="false" />
+          </div>
+          <div class="form-group">
+            <label>SET PASSWORD:</label>
+            <input type="password" name="password" required />
+          </div>
+          <div class="form-group">
+            <label>CONFIRM PASSWORD:</label>
+            <input type="password" name="confirm" required />
+          </div>
+          <button type="submit" class="btn-submit">[ SUBMIT CLEARANCE REQUEST ]</button>
+        </form>
+        
+        <div class="links">
+          <a href="/login">← RETURN TO AUTHENTICATION</a>
+        </div>
+      </div>
+    )}
+	</body>
+</html>

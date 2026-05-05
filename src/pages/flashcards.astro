@@ -1,0 +1,29 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { FlashcardPlayer } from '../components/FlashcardPlayer';
+import { ChevronLeft } from 'lucide-react';
+---
+
+<BaseLayout title="INTERROGATION ROOM | Flashcards" currentPage={{ page: 'flashcards' }}>
+  <main class="prose-container">
+    <header class="mb-12 relative">
+      <a href="/" class="absolute -top-4 -left-4 text-zinc-600 hover:text-rose-600 flex items-center gap-1 font-mono text-[10px] uppercase tracking-widest transition-colors group">
+        <ChevronLeft size={14} class="group-hover:-translate-x-1 transition-transform" /> Exit to Headquarters
+      </a>
+      <div class="flex items-center justify-center gap-2 mb-4">
+        <span class="bg-indigo-600 text-white text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-tighter">Authorized Personnel Only</span>
+      </div>
+      <h1 class="text-6xl font-black mb-4 tracking-tighter uppercase text-white">Interrogation <span class="text-indigo-600">Room</span></h1>
+      <p class="text-zinc-500 font-mono text-xs uppercase tracking-[0.3em]">Subject: Protocol Retention Audit</p>
+    </header>
+
+    <div class="bg-zinc-900/50 border border-zinc-800 rounded-[3rem] p-8 md:p-16 backdrop-blur-xl shadow-2xl relative overflow-hidden min-h-[500px] flex flex-col justify-center">
+      <div class="absolute -top-24 -right-24 w-64 h-64 bg-indigo-600/10 rounded-full blur-3xl"></div>
+      <FlashcardPlayer client:load />
+    </div>
+
+    <footer class="mt-20 text-center">
+      <p class="text-zinc-600 text-xs font-mono uppercase tracking-widest italic">"The packets don't lie. Why should you?"</p>
+    </footer>
+  </main>
+</BaseLayout>

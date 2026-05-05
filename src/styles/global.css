@@ -1,0 +1,157 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", "system-ui", "-apple-system", "sans-serif";
+  --font-mono: "JetBrains Mono", "Fira Code", "monospace";
+}
+
+@layer base {
+  body {
+    @apply bg-zinc-950 text-zinc-300 antialiased;
+    font-size: 1.125rem;
+    line-height: 1.8;
+  }
+
+  p, li {
+    @apply text-left max-w-[70ch];
+  }
+
+  h1 { @apply text-6xl font-black mb-8 text-white tracking-tighter; }
+  /* h2 styling removed from base since it's customized inline per-theme in ReadingView.tsx */
+  h3 { @apply text-2xl font-bold mt-12 mb-4 text-white tracking-tight; }
+  h4 { @apply text-lg font-bold mt-8 mb-3 text-zinc-200 uppercase tracking-wider; }
+
+  .bionic-bold {
+    @apply font-black text-white;
+  }
+}
+
+@layer components {
+  .prose-container {
+    @apply mx-auto px-6 py-16 max-w-7xl;
+  }
+
+  .progress-bar-container {
+    @apply fixed top-0 left-0 w-full h-1 bg-zinc-900 z-50;
+  }
+  .progress-bar-fill {
+    @apply h-full transition-all duration-300;
+  }
+
+  .card-evidence {
+    @apply bg-zinc-900/50 border border-zinc-800 rounded-3xl p-8 hover:bg-zinc-800/50 transition-all duration-300 backdrop-blur-sm;
+  }
+
+  .btn-primary {
+    @apply text-white px-8 py-4 rounded-2xl font-black flex items-center gap-2 transition active:scale-95 uppercase tracking-tight;
+  }
+
+  .btn-secondary {
+    @apply bg-zinc-800 text-zinc-300 px-6 py-3 rounded-2xl font-bold hover:bg-zinc-700 transition active:scale-95 flex items-center gap-2 border border-zinc-700;
+  }
+
+  .tag {
+    @apply text-[10px] font-black uppercase tracking-widest bg-zinc-800 px-3 py-1 rounded-md text-zinc-500 border border-zinc-700;
+  }
+
+  /* Markdown Content Styling */
+  .markdown-content {
+    @apply text-zinc-300;
+    line-height: 1.9;
+  }
+  
+  .markdown-content p { @apply mb-8; }
+  .markdown-content ul { @apply mb-8 list-disc pl-6 space-y-2; }
+  .markdown-content ol { @apply mb-8 list-decimal pl-6 space-y-2; }
+  .markdown-content code { @apply bg-zinc-900 px-2 py-1 rounded text-zinc-200 font-mono text-[0.9em] border border-zinc-800; }
+  .markdown-content pre { @apply bg-zinc-900 p-6 rounded-2xl border border-zinc-800 mb-8 overflow-x-auto text-[0.9em] leading-relaxed; }
+  .markdown-content pre code { @apply bg-transparent p-0 border-none text-zinc-300; }
+  
+  /* Glossary Tooltips */
+  .glossary-term {
+    @apply relative cursor-help border-b-2 font-medium transition-colors;
+    border-color: var(--theme-color);
+    color: var(--theme-color);
+  }
+  .glossary-term:hover {
+    @apply text-white;
+  }
+  .glossary-term::after {
+    content: attr(data-tooltip);
+    @apply absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-zinc-800 text-white text-sm rounded-lg opacity-0 pointer-events-none transition-opacity duration-200 w-max max-w-xs shadow-xl border border-zinc-700 font-sans z-50;
+    box-shadow: 0 4px 20px var(--theme-bg);
+  }
+  .glossary-term:hover::after {
+    @apply opacity-100;
+  }
+
+  /* Protocol Police Callouts */
+  .protocol-police-callout {
+    @apply relative bg-zinc-900/80 border-l-4 p-5 rounded-r-2xl my-10 text-sm font-medium text-zinc-300 italic shadow-lg backdrop-blur-sm lg:float-right lg:clear-right lg:-mr-64 lg:w-56 lg:my-0 lg:ml-8;
+    border-color: var(--theme-color);
+  }
+  .protocol-police-callout::before {
+    content: '🚨 PROTOCOL POLICE';
+    @apply block text-[10px] font-black not-italic uppercase tracking-widest mb-2;
+    color: var(--theme-color);
+  }
+
+  /* Interactive SVG Diagrams */
+  .interactive-svg {
+    @apply w-full h-auto mx-auto my-12 bg-zinc-900 rounded-3xl p-8 border border-zinc-800 shadow-2xl font-mono text-xs overflow-visible;
+  }
+  .interactive-svg text {
+    @apply fill-zinc-300 select-none;
+  }
+  .interactive-svg rect, .interactive-svg path, .interactive-svg line {
+    @apply stroke-zinc-600 transition-all duration-300;
+  }
+  .interactive-svg g.packet-field {
+    @apply cursor-crosshair;
+  }
+  .interactive-svg g.packet-field:hover rect {
+    fill: var(--theme-bg);
+    stroke: var(--theme-color);
+    @apply stroke-2;
+  }
+  .interactive-svg g.packet-field:hover text {
+    @apply fill-white font-bold;
+  }
+
+  /* Static Svgbob fallback */
+  .markdown-content svg:not(.interactive-svg) {
+    @apply max-w-full h-auto mx-auto my-12 bg-zinc-950/50 rounded-2xl p-6 border border-zinc-800 shadow-2xl;
+  }
+  .markdown-content svg:not(.interactive-svg) text {
+    fill: #f4f4f5 !important;
+    @apply font-mono;
+  }
+  .markdown-content svg:not(.interactive-svg) path,
+  .markdown-content svg:not(.interactive-svg) line,
+  .markdown-content svg:not(.interactive-svg) rect,
+  .markdown-content svg:not(.interactive-svg) polygon,
+  .markdown-content svg:not(.interactive-svg) circle {
+    stroke: #52525b !important;
+    stroke-width: 1.5px;
+  }
+  .markdown-content svg:not(.interactive-svg) rect[fill="white"],
+  .markdown-content svg:not(.interactive-svg) polygon[fill="white"],
+  .markdown-content svg:not(.interactive-svg) circle[fill="white"] {
+    fill: transparent !important;
+  }
+}
+
+/* Custom Scanline Effect */
+body::before {
+  content: " ";
+  display: block;
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  right: 0;
+  background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+  z-index: 1000;
+  background-size: 100% 4px, 3px 100%;
+  pointer-events: none;
+}

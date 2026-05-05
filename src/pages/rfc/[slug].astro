@@ -1,0 +1,48 @@
+---
+import { getCollection, getEntry } from 'astro:content';
+import { unified } from 'unified';
+import remarkParse from 'remark-parse';
+import remarkSvgbob from 'remark-svgbob';
+import remarkRehype from 'remark-rehype';
+import rehypeStringify from 'rehype-stringify';
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import { ReadingView } from '../../components/ReadingView';
+import { chunkMarkdown } from '../../lib/chunker';
+
+export async function getStaticPaths() {
+  const rfcs = await getCollection('rfcs');
+  return rfcs.map(entry => ({
+    params: { slug: entry.id },
+    props: { entry },
+  }));
+}
+
+const { entry } = Astro.props;
+const rawChunks = chunkMarkdown(entry.body);
+
+// Protocol Police: Robust interrogation of the markdown evidence
+const processor = unified()
+  .use(remarkParse)
+  .use(remarkSvgbob)
+  .use(remarkRehype, { allowDangerousHtml: true })
+  .use(rehypeStringify, { allowDangerousHtml: true });
+
+const chunks = await Promise.all(rawChunks.map(async chunk => {
+  const result = await processor.process(chunk.content);
+  return {
+    ...chunk,
+    html: result.toString()
+  };
+}));
+---
+
+<BaseLayout 
+  title={entry.data.title} 
+  currentPage={{ 
+    page: 'rfc_reading', 
+    rfcId: entry.id, 
+    rfcTitle: entry.data.title 
+  }}
+>
+  <ReadingView client:load rfcTitle={entry.data.title} chunks={chunks} />
+</BaseLayout>

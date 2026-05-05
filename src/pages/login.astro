@@ -1,0 +1,208 @@
+---
+import { verifyPassword, createSession, verifySession } from '../lib/auth';
+import { db } from '../lib/db';
+import '../styles/global.css';
+
+let error = '';
+
+// Check if already authenticated
+const user = await verifySession(Astro.request);
+if (user) {
+  return Astro.redirect('/');
+}
+
+if (Astro.request.method === 'POST') {
+  try {
+    const data = await Astro.request.formData();
+    const callsign = data.get('callsign')?.toString();
+    const password = data.get('password')?.toString();
+
+    if (!callsign || !password) {
+      error = 'CREDENTIALS REQUIRED';
+    } else {
+      const userRecord = db.prepare('SELECT * FROM users WHERE callsign = ?').get(callsign) as any;
+      if (userRecord && await verifyPassword(password, userRecord.password_hash)) {
+        // Update last_active
+        db.prepare('UPDATE users SET last_active = CURRENT_TIMESTAMP WHERE id = ?').run(userRecord.id);
+        
+        const token = await createSession(userRecord.id, userRecord.callsign);
+        Astro.cookies.set('pp_session', token, {
+          path: '/',
+          httpOnly: true,
+          secure: import.meta.env.PROD,
+          sameSite: 'lax',
+          maxAge: 60 * 60 * 24 * 7 // 7 days
+        });
+
+        const url = new URL(Astro.request.url);
+        const redirectUrl = url.searchParams.get('redirect') || '/';
+        return Astro.redirect(redirectUrl);
+      } else {
+        error = '⚠ ACCESS DENIED — INVALID CREDENTIALS';
+      }
+    }
+  } catch (err) {
+    error = 'SYSTEM ERROR — AUTHENTICATION FAILED';
+  }
+}
+---
+
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width" />
+		<title>PROTOCOL POLICE | Secure Terminal</title>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700;800&display=swap" rel="stylesheet">
+    <style>
+      body {
+        background-color: #09090b;
+        color: #f4f4f5;
+        font-family: 'JetBrains Mono', monospace;
+        margin: 0;
+        height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+      }
+      body::before {
+        content: " ";
+        display: block;
+        position: fixed;
+        top: 0;
+        left: 0;
+        bottom: 0;
+        right: 0;
+        background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03));
+        z-index: 1000;
+        background-size: 100% 4px, 3px 100%;
+        pointer-events: none;
+      }
+      .terminal-container {
+        border: 1px solid #27272a;
+        padding: 40px;
+        background: #18181b;
+        width: 400px;
+        box-shadow: 0 0 20px rgba(0,0,0,0.5);
+      }
+      .header-title {
+        font-size: 2rem;
+        font-weight: 800;
+        margin-bottom: 0.5rem;
+        letter-spacing: -0.05em;
+        text-align: center;
+      }
+      .text-rose { color: #e11d48; }
+      .header-subtitle {
+        font-size: 0.75rem;
+        text-align: center;
+        letter-spacing: 0.2em;
+        color: #71717a;
+        margin-bottom: 2rem;
+      }
+      .classification {
+        text-align: center;
+        color: #ef4444;
+        font-weight: bold;
+        margin-bottom: 1rem;
+        letter-spacing: 0.1em;
+      }
+      .divider {
+        text-align: center;
+        color: #52525b;
+        margin-bottom: 2rem;
+        font-size: 0.8rem;
+      }
+      .form-group {
+        margin-bottom: 1.5rem;
+      }
+      .form-group label {
+        display: block;
+        font-size: 0.8rem;
+        color: #a1a1aa;
+        margin-bottom: 0.5rem;
+      }
+      .form-group input {
+        width: 100%;
+        background: #09090b;
+        border: 1px solid #3f3f46;
+        color: #f4f4f5;
+        padding: 0.75rem;
+        font-family: 'JetBrains Mono', monospace;
+        box-sizing: border-box;
+      }
+      .form-group input:focus {
+        outline: none;
+        border-color: #e11d48;
+        box-shadow: 0 0 10px rgba(225,29,72,0.2);
+      }
+      .btn-submit {
+        width: 100%;
+        background: #e11d48;
+        color: #fff;
+        border: none;
+        padding: 1rem;
+        font-family: 'JetBrains Mono', monospace;
+        font-weight: bold;
+        cursor: pointer;
+        margin-top: 1rem;
+        transition: background 0.2s;
+      }
+      .btn-submit:hover {
+        background: #be123c;
+      }
+      .links {
+        text-align: center;
+        margin-top: 2rem;
+        font-size: 0.8rem;
+      }
+      .links a {
+        color: #71717a;
+        text-decoration: none;
+      }
+      .links a:hover {
+        color: #a1a1aa;
+      }
+      .error {
+        color: #ef4444;
+        text-align: center;
+        margin-bottom: 1rem;
+        font-size: 0.9rem;
+        animation: flash 0.5s ease-in-out;
+      }
+      @keyframes flash {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0; }
+      }
+    </style>
+	</head>
+	<body>
+    <div class="terminal-container">
+      <div class="header-title">
+        PROTOCOL <span class="text-rose">POLICE</span>
+      </div>
+      <div class="header-subtitle">SECURE TERMINAL v2.4.1</div>
+      <div class="classification">CLASSIFICATION: TOP SECRET</div>
+      <div class="divider">━━━ AUTHENTICATION REQUIRED ━━━</div>
+      
+      {error && <div class="error">{error}</div>}
+      
+      <form method="POST">
+        <div class="form-group">
+          <label>OPERATOR ID:</label>
+          <input type="text" name="callsign" autocomplete="off" required spellcheck="false" />
+        </div>
+        <div class="form-group">
+          <label>PASSWORD:</label>
+          <input type="password" name="password" required />
+        </div>
+        <button type="submit" class="btn-submit">[ AUTHENTICATE ]</button>
+      </form>
+      
+      <div class="links">
+        <a href="/register">REQUEST OPERATOR CLEARANCE →</a>
+      </div>
+    </div>
+	</body>
+</html>

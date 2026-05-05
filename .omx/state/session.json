@@ -1,0 +1,9 @@
+{
+  "session_id": "omx-1777961021975-hk0u1s",
+  "started_at": "2026-05-05T06:03:48.205Z",
+  "cwd": "/home/zach/rfc-new/rfc-study-tool",
+  "pid": 414567,
+  "platform": "linux",
+  "pid_start_ticks": 7841343,
+  "pid_cmdline": "node /home/zach/.npm-global/bin/omx"
+}
