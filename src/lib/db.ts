@@ -10,6 +10,61 @@ if (!fs.existsSync(dataDir)) {
 const dbPath = path.join(dataDir, 'protocol-police.db');
 export const db = new Database(dbPath);
 
+// Define Types for Database Rows
+export interface UserRow {
+  id: number;
+  callsign: string;
+  password_hash: string;
+  created_at: string;
+  last_active: string;
+  settings: string;
+}
+
+export interface ProgressRow {
+  id: number;
+  user_id: number;
+  rfc_id: string;
+  fragments_read: number;
+  total_fragments: number;
+  completed: number;
+  completed_at: string | null;
+}
+
+export interface FlashcardLogRow {
+  id: number;
+  user_id: number;
+  card_id: string;
+  rfc_id: string;
+  rating: string;
+  rated_at: string;
+  next_review: string | null;
+}
+
+export interface ScenarioProgressRow {
+  id: number;
+  user_id: number;
+  scenario_id: string;
+  completed: number;
+  score: number;
+  completed_at: string;
+}
+
+export interface RankRow {
+  id: number;
+  user_id: number;
+  current_rank: string;
+  xp: number;
+  updated_at: string;
+}
+
+export interface UnlockRow {
+  id: number;
+  user_id: number;
+  item_id: string;
+  item_type: string;
+  unlocked_at: string;
+}
+
 // Initialize tables
 db.exec(`
   CREATE TABLE IF NOT EXISTS users (
@@ -94,3 +149,29 @@ try {
 } catch (e) {
   console.error('Migration error:', e);
 }
+
+// Typed query helpers
+export const queries = {
+  getUser: db.prepare('SELECT * FROM users WHERE id = ?'),
+  getUserByCallsign: db.prepare('SELECT * FROM users WHERE callsign = ?'),
+  getRank: db.prepare('SELECT * FROM rank WHERE user_id = ?'),
+  getProgress: db.prepare('SELECT * FROM progress WHERE user_id = ?'),
+  getScenarioProgress: db.prepare('SELECT * FROM scenario_progress WHERE user_id = ?'),
+  getUnlocks: db.prepare('SELECT item_id, item_type, unlocked_at FROM unlocks WHERE user_id = ?'),
+  getFlashcardStats: db.prepare(`
+    SELECT 
+      rfc_id, 
+      COUNT(DISTINCT card_id) as cards_reviewed,
+      MAX(rated_at) as last_review,
+      (
+        SELECT rating 
+        FROM flashcard_log f2 
+        WHERE f2.rfc_id = f1.rfc_id AND f2.user_id = ?
+        ORDER BY rated_at DESC 
+        LIMIT 1
+      ) as last_rating
+    FROM flashcard_log f1
+    WHERE user_id = ?
+    GROUP BY rfc_id
+  `)
+};

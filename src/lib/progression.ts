@@ -1,8 +1,15 @@
-import { db } from './db';
-import { RANKS } from './ranks';
+import { db, queries, type RankRow, type ProgressRow, type ScenarioProgressRow, type FlashcardLogRow, type UnlockRow } from './db';
+import { RANKS, type Rank } from './ranks';
 
-export function checkAndUpdateRank(userId: number) {
-  const currentRankRow = db.prepare('SELECT * FROM rank WHERE user_id = ?').get(userId) as any;
+/**
+ * Checks if a user has met the requirements for higher ranks and updates them if so.
+ * Also processes any item unlocks associated with the new rank.
+ * 
+ * @param userId The ID of the user to check
+ * @returns The ID of the user's current (potentially updated) rank
+ */
+export function checkAndUpdateRank(userId: number): string {
+  const currentRankRow = queries.getRank.get(userId) as RankRow | undefined;
   if (!currentRankRow) {
     db.prepare('INSERT INTO rank (user_id, current_rank, xp) VALUES (?, ?, ?)').run(userId, 'PACKET_MONKEY', 0);
     return 'PACKET_MONKEY';
@@ -19,14 +26,14 @@ export function checkAndUpdateRank(userId: number) {
     let meetsRequirements = true;
 
     for (const req of rank.requirements) {
-      if (req.type === 'rfc') {
-        const progress = db.prepare('SELECT completed FROM progress WHERE user_id = ? AND rfc_id = ?').get(userId, req.id) as any;
+      if (req.type === 'rfc' && req.id) {
+        const progress = db.prepare('SELECT completed FROM progress WHERE user_id = ? AND rfc_id = ?').get(userId, req.id) as { completed: number } | undefined;
         if (!progress || !progress.completed) {
           meetsRequirements = false;
           break;
         }
-      } else if (req.type === 'scenario') {
-        const progress = db.prepare('SELECT completed FROM scenario_progress WHERE user_id = ? AND scenario_id = ?').get(userId, req.id) as any;
+      } else if (req.type === 'scenario' && req.id) {
+        const progress = db.prepare('SELECT completed FROM scenario_progress WHERE user_id = ? AND scenario_id = ?').get(userId, req.id) as { completed: number } | undefined;
         if (!progress || !progress.completed) {
           meetsRequirements = false;
           break;
@@ -41,7 +48,7 @@ export function checkAndUpdateRank(userId: number) {
             WHERE user_id = ?
             GROUP BY card_id
           )
-        `).all(userId, userId) as any[];
+        `).all(userId, userId) as Pick<FlashcardLogRow, 'card_id' | 'rating'>[];
 
         if (latestRatings.length === 0) {
           meetsRequirements = false;
@@ -81,11 +88,24 @@ export function checkAndUpdateRank(userId: number) {
   return currentRankId;
 }
 
-export function getRankProgress(userId: number) {
-  let currentRankRow = db.prepare('SELECT * FROM rank WHERE user_id = ?').get(userId) as any;
+export interface RankProgress {
+  rank: Rank;
+  xp: number;
+  nextRank: Rank | null;
+  percentage: number;
+}
+
+/**
+ * Retrieves the current rank and XP progress for a user.
+ * 
+ * @param userId The ID of the user
+ * @returns An object containing rank details, current XP, next rank, and progress percentage
+ */
+export function getRankProgress(userId: number): RankProgress {
+  let currentRankRow = queries.getRank.get(userId) as RankRow | undefined;
   if (!currentRankRow) {
     db.prepare('INSERT INTO rank (user_id, current_rank, xp) VALUES (?, ?, ?)').run(userId, 'PACKET_MONKEY', 0);
-    currentRankRow = { current_rank: 'PACKET_MONKEY', xp: 0 };
+    currentRankRow = { id: 0, user_id: userId, current_rank: 'PACKET_MONKEY', xp: 0, updated_at: new Date().toISOString() };
   }
 
   const currentRankId = currentRankRow.current_rank;
@@ -111,16 +131,26 @@ export function getRankProgress(userId: number) {
   };
 }
 
-export function recordFragmentRead(userId: number, rfcId: string, fragmentIndex: number, totalFragments: number) {
-  const existing = db.prepare('SELECT * FROM progress WHERE user_id = ? AND rfc_id = ?').get(userId, rfcId) as any;
+/**
+ * Records that a user has read an RFC fragment and adds XP.
+ * Triggers a rank check upon completion.
+ * 
+ * @param userId The ID of the user
+ * @param rfcId The ID of the RFC (e.g., 'rfc791')
+ * @param fragmentIndex The index of the fragment read
+ * @param totalFragments Total number of fragments in the RFC
+ * @returns The user's rank ID after potentially ranking up
+ */
+export function recordFragmentRead(userId: number, rfcId: string, fragmentIndex: number, totalFragments: number): string {
+  const existing = db.prepare('SELECT * FROM progress WHERE user_id = ? AND rfc_id = ?').get(userId, rfcId) as ProgressRow | undefined;
   
   let fragmentsRead = 1;
   let isCompleted = false;
   
   if (existing) {
     fragmentsRead = existing.fragments_read + 1;
-    if (fragmentsRead > existing.total_fragments) {
-        fragmentsRead = existing.total_fragments;
+    if (fragmentsRead > totalFragments) {
+        fragmentsRead = totalFragments;
     }
     isCompleted = fragmentsRead >= totalFragments;
     
@@ -143,7 +173,7 @@ export function recordFragmentRead(userId: number, rfcId: string, fragmentIndex:
   return checkAndUpdateRank(userId);
 }
 
-export function recordFlashcardRating(userId: number, cardId: string, rfcId: string, rating: string) {
+export function recordFlashcardRating(userId: number, cardId: string, rfcId: string, rating: string): string {
   db.prepare(`
     INSERT INTO flashcard_log (user_id, card_id, rfc_id, rating)
     VALUES (?, ?, ?, ?)
@@ -163,8 +193,8 @@ export function recordFlashcardRating(userId: number, cardId: string, rfcId: str
   return checkAndUpdateRank(userId);
 }
 
-export function recordScenarioComplete(userId: number, scenarioId: string, score: number) {
-  const existing = db.prepare('SELECT * FROM scenario_progress WHERE user_id = ? AND scenario_id = ?').get(userId, scenarioId) as any;
+export function recordScenarioComplete(userId: number, scenarioId: string, score: number): string {
+  const existing = queries.getScenarioProgress.get(userId, scenarioId) as ScenarioProgressRow | undefined;
   
   if (existing) {
     db.prepare(`
@@ -185,6 +215,6 @@ export function recordScenarioComplete(userId: number, scenarioId: string, score
   return checkAndUpdateRank(userId);
 }
 
-export function getUnlocks(userId: number) {
-  return db.prepare('SELECT item_id, item_type, unlocked_at FROM unlocks WHERE user_id = ?').all(userId);
+export function getUnlocks(userId: number): UnlockRow[] {
+  return queries.getUnlocks.all(userId) as UnlockRow[];
 }

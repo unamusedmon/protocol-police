@@ -86,7 +86,7 @@ const getRatingColor = (rating: string) => {
         <span class="text-zinc-500 font-mono text-xs uppercase tracking-[0.3em]">Eyes Only: Subject {user.callsign.toUpperCase()}</span>
       </div>
       
-      <h1 class="text-6xl font-black mb-2 tracking-tighter leading-none text-white uppercase">
+      <h1 class="text-6xl font-black mb-2 tracking-tighter leading-none text-white uppercase glitch-hover">
         Personnel Dossier
       </h1>
       <p class="text-zinc-400 font-mono text-sm tracking-widest">
@@ -102,9 +102,9 @@ const getRatingColor = (rating: string) => {
       <h2 class="text-xl font-black uppercase tracking-[0.2em] text-zinc-500 mb-6 border-b border-zinc-800 pb-2">Current Classification</h2>
       
       <div class="flex flex-col md:flex-row gap-8 items-start relative z-10">
-        <div class="bg-zinc-950 p-6 rounded-2xl border border-zinc-800 flex-1">
+        <div class="bg-zinc-950 p-6 rounded-2xl border border-zinc-800 flex-1 group">
           <div class="text-rose-500 font-black text-xs uppercase tracking-widest mb-1">Rank</div>
-          <div class="text-4xl font-black text-white mb-2">{rank.title}</div>
+          <div class="text-4xl font-black text-white mb-2 group-hover:animate-pulse transition-all">{rank.title}</div>
           <p class="text-zinc-400 italic text-sm border-l-2 border-rose-600 pl-3 py-1">
             "{rank.description}"
           </p>

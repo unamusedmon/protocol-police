@@ -17,6 +17,8 @@ export async function getStaticPaths() {
   }));
 }
 
+export const prerender = true;
+
 const { entry } = Astro.props;
 const rawChunks = chunkMarkdown(entry.body);
 

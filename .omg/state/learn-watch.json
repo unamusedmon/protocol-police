@@ -1,6 +1,6 @@
 {
   "last_session_id": "caade691-b96f-41c2-9e80-aa126c923ba9",
-  "last_event_key": "caade691-b96f-41c2-9e80-aa126c923ba9:transcript:b3f17fc36a187275414904de4e5d0b9785118772a9e3b78ce46a3fb0d37cb989",
+  "last_event_key": "caade691-b96f-41c2-9e80-aa126c923ba9:transcript:5420ced4a9feb0962aefe24d5d24f2a2996aea82c012cf471e39d221d0568367",
   "last_prompted_session_id": "",
   "last_reason": "short-session",
   "last_prompted_at": "",
@@ -8,5 +8,5 @@
   "last_actionable_message_count": 0,
   "deep_interview_lock_active": false,
   "deep_interview_lock_source": "/home/zach/protocol-police/.omg/state/deep-interview.json",
-  "updated_at": "2026-05-07T08:38:12.536Z"
+  "updated_at": "2026-05-07T18:38:12.634Z"
 }

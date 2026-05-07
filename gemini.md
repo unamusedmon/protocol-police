@@ -28,6 +28,7 @@
 - Fixed git conflict in src/lib/zahra.ts.
 - Fixed duplicate closing tags in README.md.
 - Consolidated sanitize_logs.py and fixed absolute paths to use project-relative paths.
+- Excised large .nodeenv binary from git history and updated .gitignore.
 - Verified and fixed dossier.astro logic to correctly use userId from Astro.locals.
 - Fixed syntax error in dossier.astro.
 You are the lead architect for Protocol Police — a RFC learning platform 

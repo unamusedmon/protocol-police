@@ -9,7 +9,8 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "astro": "astro"
+    "astro": "astro",
+    "test": "vitest run"
   },
   "dependencies": {
     "@astrojs/node": "^10.0.6",
@@ -33,9 +34,11 @@
     "remark-rehype": "^11.1.2",
     "remark-svgbob": "^2.0.0",
     "tailwindcss": "^4.2.4",
-    "unified": "^11.0.5"
+    "unified": "^11.0.5",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@types/bcryptjs": "^3.0.0"
+    "@types/bcryptjs": "^3.0.0",
+    "vitest": "^4.1.5"
   }
 }

@@ -45,9 +45,11 @@ export default function RankBadge() {
     
     fetchRank();
     
-    // Optional: poll every 5 seconds or listen to custom events if we want real-time updates without page reload.
-    // For now, simple polling can keep the header up to date.
-    const interval = setInterval(fetchRank, 5000);
+    const interval = setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        fetchRank();
+      }
+    }, 10000);
     return () => clearInterval(interval);
   }, [prevRankId]);
 
@@ -58,7 +60,7 @@ export default function RankBadge() {
       href="/dossier"
       className={`fixed top-4 right-4 z-50 flex items-center gap-3 bg-zinc-950/80 border border-zinc-800 backdrop-blur-md px-4 py-2 rounded-xl transition-all duration-500 hover:border-rose-900/50 hover:bg-zinc-900 ${
         justRankedUp ? 'shadow-[0_0_20px_rgba(225,29,72,0.8)] border-rose-500 scale-105' : 'shadow-lg'
-      }`}
+      } terminal-flicker`}
     >
       <div className={`p-1.5 rounded-lg ${justRankedUp ? 'bg-rose-500 text-white' : 'bg-zinc-900 text-rose-600'}`}>
         <Shield size={16} />

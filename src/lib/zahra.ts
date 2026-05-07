@@ -1,8 +1,8 @@
-import { db } from './db';
+import { db, queries, type FlashcardLogRow, type ProgressRow, type ScenarioProgressRow, type UnlockRow } from './db';
 import { getRankProgress } from './progression';
 import { RANKS } from './ranks';
 
-export async function generateZahraResponse(systemPrompt: string, history: any[], message: string) {
+export async function generateZahraResponse(systemPrompt: string, history: { role: string, content: string }[], message: string): Promise<string> {
   const url = `https://mars.chub.ai/chub/asha/v1/chat/completions`;
   const apiKey = process.env.CHUB_API_KEY || (import.meta as any).env?.CHUB_API_KEY;
   
@@ -41,6 +41,12 @@ export async function generateZahraResponse(systemPrompt: string, history: any[]
     // Strip <think> tags from reasoning models (handles unclosed tags)
     content = content.replace(/<think>[\s\S]*?(?:<\/think>|$)/g, '').trim();
     
+    // Security: Strip potential HTML tags to prevent injection while allowing basic formatting
+    // Note: The UI layer uses dangerouslySetInnerHTML in some places for markdown, 
+    // so we must be careful.
+    content = content.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
+    content = content.replace(/on\w+="[^"]*"/gi, ''); // Strip inline event handlers
+    
     // Strip LaTeX artifacts like \boxed{...} or \text{...}
     content = content.replace(/\\boxed\{([\s\S]*?)\}/g, '$1');
     content = content.replace(/\\text\{([\s\S]*?)\}/g, '$1');
@@ -55,7 +61,7 @@ export async function generateZahraResponse(systemPrompt: string, history: any[]
   }
 }
 
-export function determineEmotionalState(context: any, message: string): string {
+export function determineEmotionalState(context: { rankTitle: string }, message: string): string {
   const lower = message.toLowerCase();
   
   // Happy/Proud state
@@ -84,15 +90,19 @@ export function determineEmotionalState(context: any, message: string): string {
   return 'SHY_IDLE';
 }
 
-export function buildSystemPrompt(user: any, currentPage: any): string {
+export function buildSystemPrompt(user: { userId: number, callsign: string }, currentPage: any): string {
   const rankProgress = getRankProgress(user.userId);
   
-  // Gather stats
-  const rfcGods = db.prepare("SELECT DISTINCT rfc_id FROM flashcard_log WHERE user_id = ? AND rating = 'RFC_GOD'").all(user.userId) as any[];
-  const brainRots = db.prepare("SELECT DISTINCT rfc_id FROM flashcard_log WHERE user_id = ? AND rating = 'BRAIN_ROT'").all(user.userId) as any[];
-  const completedRfcs = db.prepare("SELECT rfc_id FROM progress WHERE user_id = ? AND completed = 1").all(user.userId) as any[];
-  const clearedScenarios = db.prepare("SELECT scenario_id FROM scenario_progress WHERE user_id = ? AND completed = 1").all(user.userId) as any[];
-  const recentUnlocks = db.prepare("SELECT item_id, item_type FROM unlocks WHERE user_id = ? ORDER BY unlocked_at DESC LIMIT 3").all(user.userId) as any[];
+  // Consolidate stats collection
+  const stats = db.prepare(`
+    SELECT 
+      (SELECT COUNT(DISTINCT rfc_id) FROM flashcard_log WHERE user_id = ? AND rating = 'RFC_GOD') as god_count,
+      (SELECT COUNT(DISTINCT rfc_id) FROM flashcard_log WHERE user_id = ? AND rating = 'BRAIN_ROT') as rot_count,
+      (SELECT COUNT(*) FROM progress WHERE user_id = ? AND completed = 1) as completed_rfcs,
+      (SELECT COUNT(*) FROM scenario_progress WHERE user_id = ? AND completed = 1) as cleared_scenarios
+  `).get(user.userId, user.userId, user.userId, user.userId) as { god_count: number, rot_count: number, completed_rfcs: number, cleared_scenarios: number };
+  
+  const recentUnlocks = queries.getUnlocks.all(user.userId) as UnlockRow[];
   
   const recentActivities = db.prepare(`
     SELECT 'Read fragment ' || fragments_read || ' of ' || rfc_id as activity FROM progress WHERE user_id = ?
@@ -100,11 +110,12 @@ export function buildSystemPrompt(user: any, currentPage: any): string {
     SELECT 'Rated ' || rfc_id || ' card as ' || rating as activity FROM flashcard_log WHERE user_id = ?
     UNION ALL
     SELECT 'Completed scenario ' || scenario_id as activity FROM scenario_progress WHERE user_id = ?
+    ORDER BY activity DESC
     LIMIT 3
-  `).all(user.userId, user.userId, user.userId) as any[];
+  `).all(user.userId, user.userId, user.userId) as { activity: string }[];
 
   // Calculate days since last login
-  const msgs = db.prepare("SELECT created_at FROM zahra_messages WHERE user_id = ? ORDER BY created_at DESC LIMIT 1").get(user.userId) as any;
+  const msgs = db.prepare("SELECT created_at FROM zahra_messages WHERE user_id = ? ORDER BY created_at DESC LIMIT 1").get(user.userId) as { created_at: string } | undefined;
   let daysAway = 0;
   if (msgs) {
     const diff = Date.now() - new Date(msgs.created_at).getTime();
@@ -150,18 +161,18 @@ Current operator: ${user.callsign}
 Rank: ${rankProgress.rank.title}
 XP: ${rankProgress.xp} / ${rankProgress.nextRank?.xp_threshold || 'MAX'}
 Days since last interaction: ${daysAway}
-Strong areas: ${rfcGods.length ? rfcGods.map(r => r.rfc_id).join(', ') : 'none yet'}
-Weak areas: ${brainRots.length ? brainRots.map(r => r.rfc_id).join(', ') : 'none yet'}
-Recent unlocks: ${recentUnlocks.length ? recentUnlocks.map(u => `${u.item_type}:${u.item_id}`).join(', ') : 'none'}
-Scenario progress: ${clearedScenarios.length ? clearedScenarios.map(s => `Scenario ${s.scenario_id} cleared`).join(', ') : 'no scenarios cleared'}
+Strong areas: ${stats.god_count ? `${stats.god_count} RFCs mastered` : 'none yet'}
+Weak areas: ${stats.rot_count ? `${stats.rot_count} RFCs needing attention` : 'none yet'}
+Recent unlocks: ${recentUnlocks.length ? recentUnlocks.slice(0, 3).map(u => `${u.item_type}:${u.item_id}`).join(', ') : 'none'}
+Scenario progress: ${stats.cleared_scenarios ? `${stats.cleared_scenarios} scenarios cleared` : 'no scenarios cleared'}
 Recently completed: ${recentActivities.length ? recentActivities.map(a => a.activity).join(', ') : 'nothing yet'}
 Currently viewing: ${JSON.stringify(currentPage)}
 
 Tone for this rank: ${tone}`;
 }
 
-export function getInitiationMessage(user: any): { message: string | null, emotionalState: string } {
-  const msgCount = db.prepare("SELECT COUNT(*) as count FROM zahra_messages WHERE user_id = ?").get(user.userId) as any;
+export function getInitiationMessage(user: { userId: number, callsign: string }): { message: string | null, emotionalState: string } {
+  const msgCount = db.prepare("SELECT COUNT(*) as count FROM zahra_messages WHERE user_id = ?").get(user.userId) as { count: number };
   
   if (msgCount.count === 0) {
     return {
@@ -170,7 +181,7 @@ export function getInitiationMessage(user: any): { message: string | null, emoti
     };
   }
 
-  const lastMsg = db.prepare("SELECT created_at FROM zahra_messages WHERE user_id = ? ORDER BY created_at DESC LIMIT 1").get(user.userId) as any;
+  const lastMsg = db.prepare("SELECT created_at FROM zahra_messages WHERE user_id = ? ORDER BY created_at DESC LIMIT 1").get(user.userId) as { created_at: string } | undefined;
   if (lastMsg) {
     const diff = Date.now() - new Date(lastMsg.created_at).getTime();
     const daysAway = Math.floor(diff / (1000 * 60 * 60 * 24));
@@ -184,12 +195,12 @@ export function getInitiationMessage(user: any): { message: string | null, emoti
   }
 
   // Check if they just ranked up today
-  const rank = db.prepare("SELECT current_rank, updated_at FROM rank WHERE user_id = ?").get(user.userId) as any;
+  const rank = queries.getRank.get(user.userId) as RankRow | undefined;
   if (rank) {
     const diff = Date.now() - new Date(rank.updated_at).getTime();
     const hoursSinceUpdate = diff / (1000 * 60 * 60);
     if (hoursSinceUpdate < 1 && rank.current_rank !== 'PACKET_MONKEY') {
-        const lastInit = db.prepare("SELECT created_at FROM zahra_messages WHERE user_id = ? AND role = 'assistant' AND content LIKE '%promotion%' ORDER BY created_at DESC LIMIT 1").get(user.userId) as any;
+        const lastInit = db.prepare("SELECT created_at FROM zahra_messages WHERE user_id = ? AND role = 'assistant' AND content LIKE '%promotion%' ORDER BY created_at DESC LIMIT 1").get(user.userId) as { created_at: string } | undefined;
         let alreadyCongratulated = false;
         if (lastInit) {
             const timeSinceCongrat = (Date.now() - new Date(lastInit.created_at).getTime()) / (1000 * 60 * 60);
