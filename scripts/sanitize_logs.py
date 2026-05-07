@@ -4,7 +4,9 @@ import re
 import ipaddress
 import random
 
-src_dir = "/mnt/data/zeek-spool/zeek/"
+# Use relative paths from project root
+base_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+src_dir = os.path.join(base_dir, "data", "raw_zeek") # Local data dir
 files_to_process = [
     "conn.log",
     "weird.log",
@@ -14,10 +16,11 @@ files_to_process = [
     "ssl.2026-05-04-02-00-00.log"
 ]
 
-dest_raw_dir = "/home/zach/protocol-police/src/data/zeek-scenarios/raw/"
-dest_scen_dir = "/home/zach/protocol-police/src/data/zeek-scenarios/"
+dest_raw_dir = os.path.join(base_dir, "src", "data", "zeek-scenarios", "raw")
+dest_scen_dir = os.path.join(base_dir, "src", "data", "zeek-scenarios")
 
 os.makedirs(dest_raw_dir, exist_ok=True)
+os.makedirs(dest_scen_dir, exist_ok=True)
 
 ip_map = {
     "192.168.0.254": "10.0.0.1",

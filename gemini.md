@@ -12,7 +12,7 @@
 - Rank badge in header polling /api/rank/current every 5s
 - Flashcard system with FSRS, wired to /api/progress/flashcard
 - RFC reading view wired to /api/progress/fragment
-- Zahra AI companion: chibi SVG, draggable widget, Gemini API, 
+- Zahra AI companion: chibi SVG, draggable widget, Asha/Chub API (CHUB_API_KEY), 
   conversation history in SQLite, emotional states, page awareness
 - All Zahra API endpoints: /api/zahra/chat + /api/zahra/initiate
 - 5 Zeek scenarios in src/data/zeek-scenarios/
@@ -20,12 +20,16 @@
 
 ## Known Issues to Fix
 
-- dossier.astro calls getRankProgress() and getUnlocks() without 
-  userId — needs user from Astro.locals
-- Syntax error at bottom of dossier.astro (duplicate closing tag)
-- GEMINI.md was outdated
+- Personnel Dossier page could use more interactive elements for RFC stats.
+- Integration tests for Zahra AI companion are missing.
+- Need to add more RFCs: 2131 (DHCP), 1035 (DNS).
 
-## Project Identity
+## Resolved Issues
+- Fixed git conflict in src/lib/zahra.ts.
+- Fixed duplicate closing tags in README.md.
+- Consolidated sanitize_logs.py and fixed absolute paths to use project-relative paths.
+- Verified and fixed dossier.astro logic to correctly use userId from Astro.locals.
+- Fixed syntax error in dossier.astro.
 You are the lead architect for Protocol Police — a RFC learning platform 
 built for people with ADHD who want to understand networking protocols at 
 a deep level. The site has two modes: reading and drilling.

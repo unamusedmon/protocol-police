@@ -36,7 +36,7 @@ High-fidelity reading experience for the paranoid.
 A shy, sweet, and slightly stuttering AI assistant embedded in the system.
 - **Emotional Logic**: She gets quietly excited when you do well and worried when you're away.
 - **RFC Expertise**: She won't give you the answers, but she'll point you to the right section.
-- **Secure Core**: Powered by **Gemini 1.5 Flash**.
+- **Secure Core**: Powered by **Asha** via Chub AI.
 
 ---
 
@@ -44,7 +44,7 @@ A shy, sweet, and slightly stuttering AI assistant embedded in the system.
 
 - **Node.js**: >= 22.12.0 (The Bureaucrat)
 - **SQLite**: (The Evidence Locker)
-- **Gemini API Key**: (Zahra's Soul)
+
 - **A sense of duty**: (Optional, but recommended)
 
 ---
@@ -65,7 +65,7 @@ A shy, sweet, and slightly stuttering AI assistant embedded in the system.
 3. **Configure the Environment**:
    Create a `.env` file (copy `.env.example`). Don't leak your `JWT_SECRET` unless you want to be demoted to `ROUTER DUST`.
    ```env
-   GEMINI_API_KEY=your_actual_key_here
+   CHUB_API_KEY=your_chub_api_key_here
    JWT_SECRET=something_very_long_and_random
    ```
 

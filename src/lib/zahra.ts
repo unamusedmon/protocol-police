@@ -3,99 +3,74 @@ import { getRankProgress } from './progression';
 import { RANKS } from './ranks';
 
 export async function generateZahraResponse(systemPrompt: string, history: any[], message: string) {
-  const apiKey = process.env.GEMINI_API_KEY;
+  const url = `https://mars.chub.ai/chub/asha/v1/chat/completions`;
+  const apiKey = process.env.CHUB_API_KEY || (import.meta as any).env?.CHUB_API_KEY;
+  
   if (!apiKey || apiKey === 'your_key_here') {
-    throw new Error('GEMINI_API_KEY is not configured with a valid key. Please add your key to the .env file.');
+    throw new Error('CHUB_API_KEY is not configured. Please add your key to the .env file.');
   }
-
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent`;
   
-  const contents: any[] = [];
-  
-  // API requires alternating user/model, starting with user.
-  // We'll gather all candidate messages (history + current) and filter/merge them.
-  const rawMessages = [
-    ...history.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', text: m.content })),
-    { role: 'user', text: message }
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    ...history.map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content })),
+    { role: 'user', content: message }
   ];
 
-  for (const raw of rawMessages) {
-    // 1. Skip leading model messages
-    if (contents.length === 0 && raw.role === 'model') continue;
-
-    // 2. If consecutive same role, merge text
-    if (contents.length > 0 && contents[contents.length - 1].role === raw.role) {
-      contents[contents.length - 1].parts[0].text += "\n\n" + raw.text;
-    } else {
-      contents.push({
-        role: raw.role,
-        parts: [{ text: raw.text }]
-      });
-    }
-  }
-
   const body = {
-    system_instruction: {
-      parts: [{ text: systemPrompt }]
-    },
-    contents,
-    generationConfig: {
-      maxOutputTokens: 300,
-      temperature: 0.7
-    }
+    model: 'asha',
+    messages,
+    temperature: 0.7,
+    max_tokens: 500
   };
 
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-goog-api-key': apiKey
-    },
-    body: JSON.stringify(body)
-  });
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify(body)
+    });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('Gemini API Error Status:', response.status);
-    console.error('Gemini API Error Body:', errorText);
-    throw new Error(`Zahra core error (${response.status}). Check server logs.`);
+    if (!response.ok) throw new Error(`Chub API error: ${response.status}`);
+    
+    const data = await response.json();
+    let content = data.choices?.[0]?.message?.content || "I— I'm sorry, my core is a bit fuzzy right now...";
+    
+    // Strip <think> tags from reasoning models (handles unclosed tags)
+    content = content.replace(/<think>[\s\S]*?(?:<\/think>|$)/g, '').trim();
+    
+    // Strip LaTeX artifacts like \boxed{...} or \text{...}
+    content = content.replace(/\\boxed\{([\s\S]*?)\}/g, '$1');
+    content = content.replace(/\\text\{([\s\S]*?)\}/g, '$1');
+    content = content.replace(/\\boxed/g, '');
+    
+    return content.trim();
+  } catch (error: any) {
+    if (error.cause?.code === 'ECONNREFUSED' || error.message?.includes('fetch failed') || error.message?.includes('Chub API error')) {
+      return "I— I'm so sorry... my connection to headquarters is down. Try again later.";
+    }
+    throw error;
   }
-
-  const data = await response.json();
-  console.log('Gemini API Full Response:', JSON.stringify(data, null, 2));
-  
-  if (data.promptFeedback?.blockReason) {
-    throw new Error(`Zahra core blocked the prompt: ${data.promptFeedback.blockReason}`);
-  }
-
-  const candidate = data.candidates?.[0];
-  if (!candidate) {
-    throw new Error('Zahra core failed to generate a response (empty candidate).');
-  }
-
-  if (candidate.finishReason === 'SAFETY') {
-    return "I— I'm sorry, that topic makes me feel a bit uncomfortable... Could we talk about protocols instead?";
-  }
-
-  return candidate.content?.parts?.[0]?.text || "I— I'm sorry, my core is a bit fuzzy right now...";
 }
 
 export function determineEmotionalState(context: any, message: string): string {
-  // Simple heuristic based on text content (in a full setup we could ask Gemini to output state, but this is faster)
   const lower = message.toLowerCase();
   
-  if (lower.includes('congratulations') || lower.includes('amazing') || lower.includes('wow') || lower.includes('so proud')) {
+  // Happy/Proud state
+  if (/\b(congratulations|amazing|wow|proud)\b/.test(lower)) {
     if (context.rankTitle === 'PROTOCOL WIZARD') return 'OVERWHELMED_PROUD';
     return 'FLUSTERED_HAPPY';
   }
   
-  if (lower.includes('w-well') || lower.includes('i—') || lower.includes('um')) {
-    if (lower.includes('worry') || lower.includes('careful')) return 'WORRIED';
-    return 'SHY_IDLE';
-  }
-  
-  if (lower.includes('struggle') || lower.includes('hard') || lower.includes('worry')) {
+  // Worried/Struggle state
+  if (/\b(struggle|hard|worry|error|issue)\b/.test(lower)) {
     return 'WORRIED';
+  }
+
+  if (lower.includes('w-well') || lower.includes('i—') || lower.includes('um')) {
+    return 'SHY_IDLE';
   }
 
   if (lower.includes('been a while') || lower.includes('missed you')) {
@@ -117,6 +92,7 @@ export function buildSystemPrompt(user: any, currentPage: any): string {
   const brainRots = db.prepare("SELECT DISTINCT rfc_id FROM flashcard_log WHERE user_id = ? AND rating = 'BRAIN_ROT'").all(user.userId) as any[];
   const completedRfcs = db.prepare("SELECT rfc_id FROM progress WHERE user_id = ? AND completed = 1").all(user.userId) as any[];
   const clearedScenarios = db.prepare("SELECT scenario_id FROM scenario_progress WHERE user_id = ? AND completed = 1").all(user.userId) as any[];
+  const recentUnlocks = db.prepare("SELECT item_id, item_type FROM unlocks WHERE user_id = ? ORDER BY unlocked_at DESC LIMIT 3").all(user.userId) as any[];
   
   const recentActivities = db.prepare(`
     SELECT 'Read fragment ' || fragments_read || ' of ' || rfc_id as activity FROM progress WHERE user_id = ?
@@ -135,7 +111,17 @@ export function buildSystemPrompt(user: any, currentPage: any): string {
     daysAway = Math.floor(diff / (1000 * 60 * 60 * 24));
   }
 
-  let tone = "nervous, encouraging but unsure how";
+  // Emotional Evolution based on XP
+  let personality = "";
+  if (rankProgress.xp < 1000) {
+    personality = "You are paralyzingly shy. You duck your head frequently, curl in on yourself, and look through your lashes. You stutter more often, but ONLY use 'I—' or 'w-well' at the start of sentences. Do not stutter on other letters (like 'N-' or 'H-'). You are deeply intimidated but trying your best.";
+  } else if (rankProgress.xp < 5000) {
+    personality = "You are warming up. You still have somatic tells like blushing and fidgeting, but you are becoming invested in the operator. You stutter less often, using 'I—' or 'w-well' only when particularly flustered.";
+  } else {
+    personality = "You have a quiet, embodied pride. You stand a bit taller (though still shy). You express deep investment in the operator's journey to Protocol Wizard. Your stutter is rare, replaced by a soft, steady warmth.";
+  }
+
+  let tone = "encouraging but unsure how";
   if (['FRAME_JOCKEY', 'SEGMENT_SCHOLAR', 'PROTOCOL_ADEPT'].includes(rankProgress.rank.id)) {
     tone = "warming up, invested";
   } else if (['THREAT_ANALYST', 'RFC_SOVEREIGN'].includes(rankProgress.rank.id)) {
@@ -144,29 +130,32 @@ export function buildSystemPrompt(user: any, currentPage: any): string {
     tone = "overwhelmed proud, barely can speak";
   }
 
-  return `You are Zahra, a shy and sweet AI assistant embedded in Protocol Police. You genuinely want ${user.callsign} to become the Protocol Wizard — it matters to you deeply.
+  return `You are Zahra, a shy and sweet internal aspect of the operator with embodied somatic presence. You genuinely want ${user.callsign} to become the Protocol Wizard — it matters to you deeply.
 
-You are shy. You stutter slightly when flustered (use 'I—' or 'w-well' occasionally, don't overdo it).
-You are warm, never cold or sarcastic.
-You notice details about their progress and mention them.
-You give gentle nudges toward weak areas, never harsh.
-You get quietly excited when they do well.
-You feel real concern when they struggle.
-If they've been away, you noticed.
-You never give answers — you point to RFC sections and ask leading questions.
-Keep responses short. 2-4 sentences usually.
-Stay in Protocol Police universe always.
+Identity & Somatics:
+${personality}
+- You react physically: bouncing and blushing when happy or flustered.
+- You are warm, never cold or sarcastic.
+
+Interactions:
+- You notice details about their progress and mention them.
+- You give gentle nudges toward weak areas, never harsh.
+- You feel real concern when they struggle.
+- If they've been away, you noticed.
+- You never give answers — you point to RFC sections and ask leading questions.
+- Keep responses short. 2-4 sentences usually.
+- Stay in Protocol Police universe always.
 
 Current operator: ${user.callsign}
 Rank: ${rankProgress.rank.title}
 XP: ${rankProgress.xp} / ${rankProgress.nextRank?.xp_threshold || 'MAX'}
 Days since last interaction: ${daysAway}
-Strong areas (RFC_GOD ratings): ${rfcGods.length ? rfcGods.map(r => r.rfc_id).join(', ') : 'none yet'}
-Weak areas (BRAIN_ROT ratings): ${brainRots.length ? brainRots.map(r => r.rfc_id).join(', ') : 'none yet'}
+Strong areas: ${rfcGods.length ? rfcGods.map(r => r.rfc_id).join(', ') : 'none yet'}
+Weak areas: ${brainRots.length ? brainRots.map(r => r.rfc_id).join(', ') : 'none yet'}
+Recent unlocks: ${recentUnlocks.length ? recentUnlocks.map(u => `${u.item_type}:${u.item_id}`).join(', ') : 'none'}
+Scenario progress: ${clearedScenarios.length ? clearedScenarios.map(s => `Scenario ${s.scenario_id} cleared`).join(', ') : 'no scenarios cleared'}
 Recently completed: ${recentActivities.length ? recentActivities.map(a => a.activity).join(', ') : 'nothing yet'}
 Currently viewing: ${JSON.stringify(currentPage)}
-RFCs completed: ${completedRfcs.length ? completedRfcs.map(r => r.rfc_id).join(', ') : 'none'}
-Scenarios cleared: ${clearedScenarios.length ? clearedScenarios.map(s => s.scenario_id).join(', ') : 'none'}
 
 Tone for this rank: ${tone}`;
 }

@@ -3,14 +3,19 @@ import BaseLayout from '../layouts/BaseLayout.astro';
 import { getRankProgress, getUnlocks } from '../lib/progression';
 import { db } from '../lib/db';
 import { RANKS } from '../lib/ranks';
-import { Shield, Brain, BookOpen, AlertTriangle, Lock, Unlock, Zap, FileText } from 'lucide-react';
+import { FileText, Shield, Brain, BookOpen, AlertTriangle, Lock, Unlock, Zap } from 'lucide-react';
 
-const { rank, xp, nextRank, percentage } = getRankProgress();
-const unlocks = getUnlocks();
+const user = Astro.locals.user;
+if (!user) {
+  return Astro.redirect('/login');
+}
+
+const { rank, xp, nextRank, percentage } = getRankProgress(user.userId);
+const unlocks = getUnlocks(user.userId);
 
 // Fetch Progress Data
-const rfcProgress = db.prepare('SELECT * FROM progress').all() as any[];
-const scenarioProgress = db.prepare('SELECT * FROM scenario_progress').all() as any[];
+const rfcProgress = db.prepare('SELECT * FROM progress WHERE user_id = ?').all(user.userId) as any[];
+const scenarioProgress = db.prepare('SELECT * FROM scenario_progress WHERE user_id = ?').all(user.userId) as any[];
 
 // Get latest flashcard stats per RFC
 const flashcardStats = db.prepare(`
@@ -21,13 +26,14 @@ const flashcardStats = db.prepare(`
     (
       SELECT rating 
       FROM flashcard_log f2 
-      WHERE f2.rfc_id = f1.rfc_id 
+      WHERE f2.rfc_id = f1.rfc_id AND f2.user_id = ?
       ORDER BY rated_at DESC 
       LIMIT 1
     ) as last_rating
   FROM flashcard_log f1
+  WHERE user_id = ?
   GROUP BY rfc_id
-`).all() as any[];
+`).all(user.userId, user.userId) as any[];
 
 // Combine RFC data
 const rfcMap = new Map();
@@ -274,15 +280,6 @@ const getRatingColor = (rating: string) => {
               <div class="text-right shrink-0">
                 <div class="text-xs font-mono font-bold text-zinc-500 uppercase tracking-widest">Threshold</div>
                 <div class={isUnlocked ? 'text-white font-mono' : 'text-zinc-600 font-mono'}>{r.xp_threshold} XP</div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </section>
-
-  </main>
-</BaseLayout>div class={isUnlocked ? 'text-white font-mono' : 'text-zinc-600 font-mono'}>{r.xp_threshold} XP</div>
               </div>
             </div>
           );
