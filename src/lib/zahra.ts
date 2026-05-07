@@ -3,7 +3,7 @@ import { getRankProgress } from './progression';
 import { RANKS } from './ranks';
 
 export async function generateZahraResponse(systemPrompt: string, history: any[], message: string) {
-  const apiKey = process.env.GEMINI_API_KEY || (import.meta as any).env?.GEMINI_API_KEY;
+  const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey || apiKey === 'your_key_here') {
     throw new Error('GEMINI_API_KEY is not configured with a valid key. Please add your key to the .env file.');
   }

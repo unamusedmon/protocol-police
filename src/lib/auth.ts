@@ -3,7 +3,11 @@ import { SignJWT, jwtVerify } from 'jose';
 import type { AstroGlobal } from 'astro';
 import { db } from './db';
 
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'fallback_secret_for_development_only_12345');
+const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET);
+
+if (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'fallback_secret_for_development_only_12345') {
+  throw new Error('JWT_SECRET environment variable is not configured. Please set a secure JWT secret in your .env file.');
+}
 const SESSION_COOKIE = 'pp_session';
 
 export async function hashPassword(password: string): Promise<string> {
