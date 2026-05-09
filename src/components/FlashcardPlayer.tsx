@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, KeyboardEvent } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { RefreshCw, CheckCircle, XCircle, AlertCircle, Award, ArrowRight, RotateCcw } from 'lucide-react';
 import { Rating, type Card, recordReview, createEmptyCard } from '../lib/fsrs';

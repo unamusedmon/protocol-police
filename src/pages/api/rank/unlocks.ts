@@ -14,6 +14,9 @@ export const GET: APIRoute = async ({ request }) => {
       headers: { 'Content-Type': 'application/json' }
     });
   } catch (err: any) {
-    return new Response(JSON.stringify({ error: err.message }), { status: 500 });
+    console.error('Unlocks API error:', err);
+    return new Response(JSON.stringify({ 
+      error: 'Failed to retrieve unlocks.'
+    }), { status: 500 });
   }
 };

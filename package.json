@@ -10,7 +10,12 @@
     "build": "astro build",
     "preview": "astro preview",
     "astro": "astro",
-    "test": "vitest run"
+    "test": "vitest run",
+    "lint": "eslint . --ext .ts,.astro,.tsx",
+    "lint:fix": "eslint . --ext .ts,.astro,.tsx --fix",
+    "format": "prettier --write \"src/**/*.{ts,tsx,astro,css,json}\"",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,astro,css,json}\"",
+    "validate": "npm run lint && npm run format:check && npm run test"
   },
   "dependencies": {
     "@astrojs/node": "^10.0.6",
@@ -33,12 +38,20 @@
     "remark-parse": "^11.0.0",
     "remark-rehype": "^11.1.2",
     "remark-svgbob": "^2.0.0",
+    "sanitize-html": "^2.17.3",
     "tailwindcss": "^4.2.4",
     "unified": "^11.0.5",
     "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/bcryptjs": "^3.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.59.2",
+    "@typescript-eslint/parser": "^8.59.2",
+    "eslint": "^10.3.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-astro": "^1.7.0",
+    "eslint-plugin-prettier": "^5.5.5",
+    "prettier": "^3.8.3",
     "vitest": "^4.1.5"
   }
 }

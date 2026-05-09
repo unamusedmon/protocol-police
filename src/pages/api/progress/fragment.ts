@@ -38,7 +38,8 @@ export const POST: APIRoute = async ({ request }) => {
       headers: { 'Content-Type': 'application/json' }
     });
   } catch (err: any) {
-    return new Response(JSON.stringify({ error: err.message }), { 
+    console.error('Fragment progress error:', err);
+    return new Response(JSON.stringify({ error: 'Failed to record fragment progress.' }), { 
       status: 500,
       headers: { 'Content-Type': 'application/json' }
     });

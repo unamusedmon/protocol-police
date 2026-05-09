@@ -13,16 +13,43 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-
 # environment variables
 .env
-.env.production
+.env.*
+!.env.example
 
-# database
-protocol-police.db
+# database files
+data/
+*.db
+*.db-shm
+*.db-wal
 
 # macOS-specific files
 .DS_Store
+.AppleDouble
+.LSOverride
 
-# jetbrains setting folder
+# Windows-specific files
+Thumbs.db
+Thumbs.db:
+$RECYCLE.BIN/
+
+# Linux-specific files
+*~
+
+# IDE
 .idea/
+.vscode/
+*.swp
+*.swo
+
+# OS temp files
+*.tmp
+*.temp
+
+# Test coverage
+coverage/
+
+# OMX
+.omx/
+.omg/

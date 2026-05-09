@@ -1,6 +1,7 @@
 ---
 import { hashPassword, createSession, verifySession } from '../lib/auth';
 import { db } from '../lib/db';
+import { sanitizeText } from '../lib/sanitize';
 import '../styles/global.css';
 
 let error = '';
@@ -18,14 +19,23 @@ if (user) {
 if (Astro.request.method === 'POST') {
   try {
     const data = await Astro.request.formData();
-    const callsign = data.get('callsign')?.toString();
-    const password = data.get('password')?.toString();
-    const confirm = data.get('confirm')?.toString();
+    const rawCallsign = data.get('callsign')?.toString();
+    const rawPassword = data.get('password')?.toString();
+    const rawConfirm = data.get('confirm')?.toString();
+
+    // Sanitize inputs
+    const callsign = rawCallsign ? sanitizeText(rawCallsign) : '';
+    const password = rawPassword || '';
+    const confirm = rawConfirm || '';
 
     if (!callsign || !password || !confirm) {
       error = 'ALL FIELDS REQUIRED';
+    } else if (callsign.length > 255 || password.length > 255) {
+      error = 'INVALID INPUT LENGTH';
     } else if (password !== confirm) {
       error = 'CREDENTIAL MISMATCH — RETRY';
+    } else if (password.length < 8) {
+      error = 'PASSWORD MUST BE AT LEAST 8 CHARACTERS';
     } else {
       const existing = db.prepare('SELECT id FROM users WHERE callsign = ?').get(callsign);
       if (existing) {
@@ -46,7 +56,7 @@ if (Astro.request.method === 'POST') {
         Astro.cookies.set('pp_session', token, {
           path: '/',
           httpOnly: true,
-          secure: import.meta.env.PROD,
+          secure: true,
           sameSite: 'lax',
           maxAge: 60 * 60 * 24 * 7 // 7 days
         });

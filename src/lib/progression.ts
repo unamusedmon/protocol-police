@@ -2,8 +2,69 @@ import { db, queries, type RankRow, type ProgressRow, type ScenarioProgressRow, 
 import { RANKS, type Rank } from './ranks';
 
 /**
+ * XP gain constants for different actions
+ */
+export const XP_GAIN = {
+  RFC_GOD: 20,
+  ACCEPTABLE: 10,
+  SKILL_ISSUE: 5,
+  BRAIN_ROT: 1,
+  FRAGMENT: 10,
+  SCENARIO: 1 // Will be multiplied by score
+} as const;
+
+/**
+ * Batch-fetch all requirement data for a user in a single query.
+ * This solves the N+1 query problem.
+ */
+function fetchAllRequirements(userId: number): {
+  rfcProgress: Map<string, boolean>;
+  scenarioProgress: Map<string, boolean>;
+  flashcardRatings: Map<string, string>;
+} {
+  const rfcProgress = new Map<string, boolean>();
+  const scenarioProgress = new Map<string, boolean>();
+  const flashcardRatings = new Map<string, string>();
+
+  // Fetch all RFC progress in one query
+  const rfcRows = db.prepare(`
+    SELECT rfc_id, completed FROM progress WHERE user_id = ?
+  `).all(userId) as { rfc_id: string; completed: number }[];
+  
+  for (const row of rfcRows) {
+    rfcProgress.set(row.rfc_id, Boolean(row.completed));
+  }
+
+  // Fetch all scenario progress in one query
+  const scenarioRows = db.prepare(`
+    SELECT scenario_id, completed FROM scenario_progress WHERE user_id = ?
+  `).all(userId) as { scenario_id: string; completed: number }[];
+  
+  for (const row of scenarioRows) {
+    scenarioProgress.set(row.scenario_id, Boolean(row.completed));
+  }
+
+  // Fetch latest rating for each flashcard in one query
+  const ratingRows = db.prepare(`
+    SELECT card_id, rating, rfc_id
+    FROM flashcard_log
+    WHERE user_id = ? AND id IN (
+      SELECT MAX(id) FROM flashcard_log WHERE user_id = ? GROUP BY card_id
+    )
+  `).all(userId, userId) as { card_id: string; rating: string; rfc_id: string }[];
+  
+  for (const row of ratingRows) {
+    flashcardRatings.set(row.card_id, row.rating);
+  }
+
+  return { rfcProgress, scenarioProgress, flashcardRatings };
+}
+
+/**
  * Checks if a user has met the requirements for higher ranks and updates them if so.
  * Also processes any item unlocks associated with the new rank.
+ * 
+ * Uses batched queries to avoid N+1 problem.
  * 
  * @param userId The ID of the user to check
  * @returns The ID of the user's current (potentially updated) rank
@@ -19,6 +80,9 @@ export function checkAndUpdateRank(userId: number): string {
   let currentRankIndex = RANKS.findIndex(r => r.id === currentRankId);
   if (currentRankIndex === -1) currentRankIndex = 0;
 
+  // Fetch all requirement data in batch (solves N+1 problem)
+  const { rfcProgress, scenarioProgress, flashcardRatings } = fetchAllRequirements(userId);
+
   let newRankIndex = currentRankIndex;
   
   for (let i = currentRankIndex + 1; i < RANKS.length; i++) {
@@ -27,39 +91,30 @@ export function checkAndUpdateRank(userId: number): string {
 
     for (const req of rank.requirements) {
       if (req.type === 'rfc' && req.id) {
-        const progress = db.prepare('SELECT completed FROM progress WHERE user_id = ? AND rfc_id = ?').get(userId, req.id) as { completed: number } | undefined;
-        if (!progress || !progress.completed) {
+        if (!rfcProgress.get(req.id)) {
           meetsRequirements = false;
           break;
         }
       } else if (req.type === 'scenario' && req.id) {
-        const progress = db.prepare('SELECT completed FROM scenario_progress WHERE user_id = ? AND scenario_id = ?').get(userId, req.id) as { completed: number } | undefined;
-        if (!progress || !progress.completed) {
+        if (!scenarioProgress.get(req.id)) {
           meetsRequirements = false;
           break;
         }
       } else if (req.type === 'flashcards' && req.condition === 'all_acceptable_or_god') {
-        const latestRatings = db.prepare(`
-          SELECT card_id, rating
-          FROM flashcard_log
-          WHERE user_id = ? AND id IN (
-            SELECT MAX(id)
-            FROM flashcard_log
-            WHERE user_id = ?
-            GROUP BY card_id
-          )
-        `).all(userId, userId) as Pick<FlashcardLogRow, 'card_id' | 'rating'>[];
-
-        if (latestRatings.length === 0) {
+        if (flashcardRatings.size === 0) {
           meetsRequirements = false;
-        } else {
-          for (const lr of latestRatings) {
-            if (lr.rating !== 'ACCEPTABLE' && lr.rating !== 'RFC_GOD') {
-              meetsRequirements = false;
-              break;
-            }
+          break;
+        }
+        
+        // Check all flashcards have acceptable or god rating
+        for (const rating of flashcardRatings.values()) {
+          if (rating !== 'ACCEPTABLE' && rating !== 'RFC_GOD') {
+            meetsRequirements = false;
+            break;
           }
         }
+        
+        if (!meetsRequirements) break;
       }
     }
 
@@ -72,16 +127,25 @@ export function checkAndUpdateRank(userId: number): string {
 
   if (newRankIndex > currentRankIndex) {
     const newRank = RANKS[newRankIndex];
-    db.prepare('UPDATE rank SET current_rank = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?').run(newRank.id, userId);
     
-    // Process unlocks
-    for (const unlock of newRank.unlocks) {
-      db.prepare(`
-        INSERT OR IGNORE INTO unlocks (user_id, item_id, item_type)
-        VALUES (?, ?, ?)
-      `).run(userId, unlock.id, unlock.type);
-    }
+    // Use transaction for atomic update
+    const updateRank = db.transaction(() => {
+      db.prepare('UPDATE rank SET current_rank = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?')
+        .run(newRank.id, userId);
+      
+      // Batch insert unlocks
+      if (newRank.unlocks.length > 0) {
+        const insertUnlock = db.prepare(`
+          INSERT OR IGNORE INTO unlocks (user_id, item_id, item_type)
+          VALUES (?, ?, ?)
+        `);
+        for (const unlock of newRank.unlocks) {
+          insertUnlock.run(userId, unlock.id, unlock.type);
+        }
+      }
+    });
     
+    updateRank();
     return newRank.id;
   }
 
@@ -174,18 +238,20 @@ export function recordFragmentRead(userId: number, rfcId: string, fragmentIndex:
 }
 
 export function recordFlashcardRating(userId: number, cardId: string, rfcId: string, rating: string): string {
+  // Validate rating
+  const validRatings = ['RFC_GOD', 'ACCEPTABLE', 'SKILL_ISSUE', 'BRAIN_ROT'];
+  if (!validRatings.includes(rating)) {
+    throw new Error(`Invalid rating: ${rating}`);
+  }
+  
+  const xpGain = XP_GAIN[rating as keyof typeof XP_GAIN];
+  
   db.prepare(`
     INSERT INTO flashcard_log (user_id, card_id, rfc_id, rating)
     VALUES (?, ?, ?, ?)
   `).run(userId, cardId, rfcId, rating);
   
   // Add XP based on rating
-  let xpGain = 0;
-  if (rating === 'RFC_GOD') xpGain = 20;
-  else if (rating === 'ACCEPTABLE') xpGain = 10;
-  else if (rating === 'SKILL_ISSUE') xpGain = 5;
-  else if (rating === 'BRAIN_ROT') xpGain = 1;
-  
   if (xpGain > 0) {
     db.prepare('UPDATE rank SET xp = xp + ? WHERE user_id = ?').run(xpGain, userId);
   }

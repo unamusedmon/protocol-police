@@ -8,6 +8,7 @@ import rehypeStringify from 'rehype-stringify';
 import BaseLayout from '../../layouts/BaseLayout.astro';
 import { ReadingView } from '../../components/ReadingView';
 import { chunkMarkdown } from '../../lib/chunker';
+import { sanitizeHtml } from '../../lib/sanitize';
 
 export async function getStaticPaths() {
   const rfcs = await getCollection('rfcs');
@@ -23,17 +24,18 @@ const { entry } = Astro.props;
 const rawChunks = chunkMarkdown(entry.body);
 
 // Protocol Police: Robust interrogation of the markdown evidence
+// SECURITY: Removed allowDangerousHtml, added sanitization
 const processor = unified()
   .use(remarkParse)
   .use(remarkSvgbob)
-  .use(remarkRehype, { allowDangerousHtml: true })
-  .use(rehypeStringify, { allowDangerousHtml: true });
+  .use(remarkRehype)
+  .use(rehypeStringify);
 
 const chunks = await Promise.all(rawChunks.map(async chunk => {
   const result = await processor.process(chunk.content);
   return {
     ...chunk,
-    html: result.toString()
+    html: sanitizeHtml(result.toString())
   };
 }));
 ---

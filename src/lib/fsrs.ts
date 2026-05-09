@@ -121,22 +121,32 @@ function saveToLocalStorage(card: Card) {
 }
 
 /**
+ * Safe JSON parse that returns empty object on error
+ */
+function safeJsonParse<T>(data: string | null, reviver?: (key: string, value: any) => any): T {
+  if (!data) return {} as T;
+  try {
+    return JSON.parse(data, reviver) as T;
+  } catch {
+    return {} as T;
+  }
+}
+
+/**
  * Retrieves all cards from LocalStorage.
  */
 function getAllFromLocalStorage(): Record<string, Card> {
   if (typeof window === 'undefined') return {};
   const data = localStorage.getItem(STORAGE_KEY);
   if (!data) return {};
-  try {
-    const parsed = JSON.parse(data);
-    // Restore Date objects
-    Object.values(parsed).forEach((c: any) => {
-      c.last_review = new Date(c.last_review);
-    });
-    return parsed;
-  } catch {
-    return {};
-  }
+  
+  // Restore Date objects safely
+  return safeJsonParse<Record<string, Card>>(data, (key, value) => {
+    if (key === 'last_review' && typeof value === 'string') {
+      return new Date(value);
+    }
+    return value;
+  });
 }
 
 /**

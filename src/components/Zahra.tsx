@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Send, User } from 'lucide-react';
+import { X, Send } from 'lucide-react';
 
 interface Message {
   id: number;
@@ -218,7 +218,7 @@ export default function Zahra({ currentPage }: { currentPage: any }) {
 
   return (
     <>
-      <style dangerouslySetInnerHTML={{__html: `
+      <style>{`
         @keyframes bob-idle {
           0%, 100% { transform: translateY(0); }
           50% { transform: translateY(-3px); }
@@ -256,7 +256,7 @@ export default function Zahra({ currentPage }: { currentPage: any }) {
         .animate-bob-slow { animation: bob-slow 4s ease-in-out infinite; }
         .animate-bob-sad { animation: bob-sad 5s ease-in-out infinite; }
         .animate-bounce-excited { animation: bounce-excited 0.6s ease-in-out infinite; }
-      `}} />
+      `}</style>
 
       {/* Floating Avatar (when minimized) */}
       {!isOpen && (

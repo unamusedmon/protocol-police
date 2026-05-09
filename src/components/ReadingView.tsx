@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { Timer, Eye, Focus, ChevronLeft, List, Network, Lock, Handshake } from 'lucide-react';
+import { Timer, Focus, ChevronLeft, List, Network, Lock, Handshake } from 'lucide-react';
 import type { ContentChunk } from '../lib/chunker';
+import { SanitizedHTML } from './SanitizedHTML';
 
 interface ReadingViewProps {
   rfcTitle: string;
@@ -176,9 +177,9 @@ export const ReadingView: React.FC<ReadingViewProps> = ({ rfcTitle, chunks }) =>
               </div>
               <h2 className="text-3xl font-black text-white mb-8 tracking-tight border-l-4 pl-4" style={{ borderColor: theme.hex }}>{chunk.title}</h2>
               <div className="text-lg text-zinc-300 leading-relaxed max-w-[70ch]">
-                <div 
+                <SanitizedHTML 
+                  html={chunk.html || ''} 
                   className={`markdown-content ${focusMode ? 'opacity-100' : 'opacity-100'}`}
-                  dangerouslySetInnerHTML={{ __html: chunk.html || '' }} 
                 />
               </div>
             </motion.section>

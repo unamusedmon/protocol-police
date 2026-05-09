@@ -1,19 +1,34 @@
 import { db, queries, type FlashcardLogRow, type ProgressRow, type ScenarioProgressRow, type UnlockRow } from './db';
 import { getRankProgress } from './progression';
 import { RANKS } from './ranks';
+import { sanitizeText } from './sanitize';
 
 export async function generateZahraResponse(systemPrompt: string, history: { role: string, content: string }[], message: string): Promise<string> {
   const url = `https://mars.chub.ai/chub/asha/v1/chat/completions`;
   const apiKey = process.env.CHUB_API_KEY || (import.meta as any).env?.CHUB_API_KEY;
   
-  if (!apiKey || apiKey === 'your_key_here') {
-    throw new Error('CHUB_API_KEY is not configured. Please add your key to the .env file.');
+  // SECURITY: Check API key without leaking info in error
+  if (!apiKey || apiKey.length < 20) {
+    throw new Error('AI service is not properly configured.');
   }
   
+  // SECURITY: Check for insecure patterns
+  const insecurePatterns = ['your_', 'chub-', 'chk-', '12345', 'password'];
+  if (insecurePatterns.some(pattern => apiKey.toLowerCase().includes(pattern))) {
+    throw new Error('AI service configuration error. Please generate a new API key.');
+  }
+  
+  // SECURITY: Sanitize all inputs to prevent prompt injection
+  const sanitizedMessage = sanitizeText(message);
+  const sanitizedHistory = history.map(m => ({
+    role: m.role === 'assistant' ? 'assistant' : 'user',
+    content: sanitizeText(m.content)
+  }));
+
   const messages = [
     { role: 'system', content: systemPrompt },
-    ...history.map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content })),
-    { role: 'user', content: message }
+    ...sanitizedHistory,
+    { role: 'user', content: sanitizedMessage }
   ];
 
   const body = {
@@ -33,7 +48,10 @@ export async function generateZahraResponse(systemPrompt: string, history: { rol
       body: JSON.stringify(body)
     });
 
-    if (!response.ok) throw new Error(`Chub API error: ${response.status}`);
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => '');
+      throw new Error(`Chub API error: ${response.status} - ${errorText.substring(0, 100)}`);
+    }
     
     const data = await response.json();
     let content = data.choices?.[0]?.message?.content || "I— I'm sorry, my core is a bit fuzzy right now...";
@@ -41,11 +59,9 @@ export async function generateZahraResponse(systemPrompt: string, history: { rol
     // Strip <think> tags from reasoning models (handles unclosed tags)
     content = content.replace(/<think>[\s\S]*?(?:<\/think>|$)/g, '').trim();
     
-    // Security: Strip potential HTML tags to prevent injection while allowing basic formatting
-    // Note: The UI layer uses dangerouslySetInnerHTML in some places for markdown, 
-    // so we must be careful.
-    content = content.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
-    content = content.replace(/on\w+="[^"]*"/gi, ''); // Strip inline event handlers
+    // SECURITY: Full sanitization of AI response before storage/display
+    // Remove all HTML tags and script content
+    content = sanitizeText(content);
     
     // Strip LaTeX artifacts like \boxed{...} or \text{...}
     content = content.replace(/\\boxed\{([\s\S]*?)\}/g, '$1');
@@ -54,10 +70,13 @@ export async function generateZahraResponse(systemPrompt: string, history: { rol
     
     return content.trim();
   } catch (error: any) {
+    // SECURITY: Don't leak internal error details to client
     if (error.cause?.code === 'ECONNREFUSED' || error.message?.includes('fetch failed') || error.message?.includes('Chub API error')) {
       return "I— I'm so sorry... my connection to headquarters is down. Try again later.";
     }
-    throw error;
+    // Generic error for all other cases
+    console.error('Zahra generation error:', error.message);
+    return "I— I'm so sorry... something went wrong with my core systems.";
   }
 }
 

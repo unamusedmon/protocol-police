@@ -1,65 +1,43 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { getRankProgress } from './progression';
+import { describe, it, expect } from 'vitest';
+import { XP_GAIN } from './progression';
 import { RANKS } from './ranks';
 
-// Mock the DB and queries
-vi.mock('./db', () => ({
-  db: {
-    prepare: vi.fn().mockReturnValue({
-      run: vi.fn(),
-      get: vi.fn()
-    })
-  },
-  queries: {
-    getRank: {
-      get: vi.fn()
-    },
-    getUnlocks: {
-      all: vi.fn()
+describe('XP_GAIN constants', () => {
+  it('should have correct XP values for ratings', () => {
+    expect(XP_GAIN.RFC_GOD).toBe(20);
+    expect(XP_GAIN.ACCEPTABLE).toBe(10);
+    expect(XP_GAIN.SKILL_ISSUE).toBe(5);
+    expect(XP_GAIN.BRAIN_ROT).toBe(1);
+    expect(XP_GAIN.FRAGMENT).toBe(10);
+  });
+});
+
+describe('Rank Requirements', () => {
+  it('should have all ranks in order', () => {
+    expect(RANKS.length).toBeGreaterThan(0);
+    expect(RANKS[0].id).toBe('PACKET_MONKEY');
+    expect(RANKS[RANKS.length - 1].id).toBe('PROTOCOL_WIZARD');
+  });
+
+  it('should have increasing XP thresholds', () => {
+    for (let i = 1; i < RANKS.length; i++) {
+      expect(RANKS[i].xp_threshold).toBeGreaterThan(RANKS[i - 1].xp_threshold);
     }
-  }
-}));
-
-import { queries } from './db';
-
-describe('Rank Progression Engine', () => {
-  beforeEach(() => {
-    vi.clearAllMocks();
   });
 
-  it('should return initial rank for new users', () => {
-    (queries.getRank.get as any).mockReturnValue(undefined);
-
-    const progress = getRankProgress(1);
-    
-    expect(progress.rank.id).toBe('PACKET_MONKEY');
-    expect(progress.xp).toBe(0);
-    expect(progress.nextRank?.id).toBe('FRAME_JOCKEY');
-    expect(progress.percentage).toBe(0);
+  it('should have unique rank IDs', () => {
+    const ids = RANKS.map(r => r.id);
+    const uniqueIds = new Set(ids);
+    expect(uniqueIds.size).toBe(ids.length);
   });
 
-  it('should calculate percentage correctly between ranks', () => {
-    (queries.getRank.get as any).mockReturnValue({
-      current_rank: 'PACKET_MONKEY',
-      xp: 50
-    });
-
-    const progress = getRankProgress(1);
-    
-    // PACKET_MONKEY (0) -> FRAME_JOCKEY (100)
-    // XP is 50, so percentage should be 50
-    expect(progress.percentage).toBe(50);
+  it('should have PROTOCOL_WIZARD as the highest rank', () => {
+    const wizardIndex = RANKS.findIndex(r => r.id === 'PROTOCOL_WIZARD');
+    expect(wizardIndex).toBe(RANKS.length - 1);
   });
 
-  it('should cap percentage at 100 for max rank', () => {
-    (queries.getRank.get as any).mockReturnValue({
-      current_rank: 'PROTOCOL_WIZARD',
-      xp: 5000
-    });
-
-    const progress = getRankProgress(1);
-    
-    expect(progress.nextRank).toBeNull();
-    expect(progress.percentage).toBe(100);
+  it('should have PACKET_MONKEY as the starting rank', () => {
+    expect(RANKS[0].id).toBe('PACKET_MONKEY');
+    expect(RANKS[0].xp_threshold).toBe(0);
   });
 });

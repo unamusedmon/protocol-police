@@ -83,7 +83,7 @@ db.exec(`
     content TEXT NOT NULL,
     emotional_state TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id)
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
   CREATE TABLE IF NOT EXISTS progress (
@@ -93,7 +93,9 @@ db.exec(`
     fragments_read INTEGER DEFAULT 0,
     total_fragments INTEGER DEFAULT 0,
     completed BOOLEAN DEFAULT FALSE,
-    completed_at TIMESTAMP
+    completed_at TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(user_id, rfc_id)
   );
 
   CREATE TABLE IF NOT EXISTS flashcard_log (
@@ -103,7 +105,8 @@ db.exec(`
     rfc_id TEXT NOT NULL,
     rating TEXT NOT NULL,
     rated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    next_review TIMESTAMP
+    next_review TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
   CREATE TABLE IF NOT EXISTS scenario_progress (
@@ -112,7 +115,9 @@ db.exec(`
     scenario_id TEXT NOT NULL,
     completed BOOLEAN DEFAULT FALSE,
     score INTEGER DEFAULT 0,
-    completed_at TIMESTAMP
+    completed_at TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(user_id, scenario_id)
   );
 
   CREATE TABLE IF NOT EXISTS rank (
@@ -120,7 +125,8 @@ db.exec(`
     user_id INTEGER NOT NULL UNIQUE,
     current_rank TEXT DEFAULT 'PACKET_MONKEY',
     xp INTEGER DEFAULT 0,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
   );
 
   CREATE TABLE IF NOT EXISTS unlocks (
@@ -128,8 +134,40 @@ db.exec(`
     user_id INTEGER NOT NULL,
     item_id TEXT NOT NULL,
     item_type TEXT NOT NULL,
-    unlocked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    unlocked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    UNIQUE(user_id, item_type, item_id)
   );
+
+  CREATE TABLE IF NOT EXISTS invalidated_sessions (
+    token_hash TEXT PRIMARY KEY,
+    invalidated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS csrf_tokens (
+    token TEXT PRIMARY KEY,
+    user_id INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    used BOOLEAN DEFAULT FALSE,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+  );
+`);
+
+// Create indexes for performance
+// Note: SQLite doesn't support IF NOT EXISTS for indexes, so we check first
+db.exec(`
+  CREATE INDEX IF NOT EXISTS idx_users_callsign ON users(callsign);
+  CREATE INDEX IF NOT EXISTS idx_zahra_messages_user_id ON zahra_messages(user_id);
+  CREATE INDEX IF NOT EXISTS idx_progress_user_id ON progress(user_id);
+  CREATE INDEX IF NOT EXISTS idx_progress_user_rfc ON progress(user_id, rfc_id);
+  CREATE INDEX IF NOT EXISTS idx_flashcard_log_user_id ON flashcard_log(user_id);
+  CREATE INDEX IF NOT EXISTS idx_flashcard_log_user_rfc ON flashcard_log(user_id, rfc_id);
+  CREATE INDEX IF NOT EXISTS idx_flashcard_log_user_card ON flashcard_log(user_id, card_id);
+  CREATE INDEX IF NOT EXISTS idx_scenario_progress_user_id ON scenario_progress(user_id);
+  CREATE INDEX IF NOT EXISTS idx_rank_user_id ON rank(user_id);
+  CREATE INDEX IF NOT EXISTS idx_unlocks_user_id ON unlocks(user_id);
+  CREATE INDEX IF NOT EXISTS idx_invalidated_sessions_hash ON invalidated_sessions(token_hash);
+  CREATE INDEX IF NOT EXISTS idx_csrf_tokens_token ON csrf_tokens(token);
 `);
 
 // Safe migration helper
@@ -140,12 +178,15 @@ function ensureColumn(table: string, column: string, type: string) {
   }
 }
 
+// NOTE: The DEFAULT 1 on user_id columns is a legacy issue that causes data mixing.
+// For new deployments, these columns should NOT have a default value.
+// Existing deployments should update their schema manually.
 try {
-  ensureColumn('progress', 'user_id', 'INTEGER NOT NULL DEFAULT 1');
-  ensureColumn('flashcard_log', 'user_id', 'INTEGER NOT NULL DEFAULT 1');
-  ensureColumn('scenario_progress', 'user_id', 'INTEGER NOT NULL DEFAULT 1');
-  ensureColumn('rank', 'user_id', 'INTEGER NOT NULL DEFAULT 1');
-  ensureColumn('unlocks', 'user_id', 'INTEGER NOT NULL DEFAULT 1');
+  ensureColumn('progress', 'user_id', 'INTEGER NOT NULL');
+  ensureColumn('flashcard_log', 'user_id', 'INTEGER NOT NULL');
+  ensureColumn('scenario_progress', 'user_id', 'INTEGER NOT NULL');
+  ensureColumn('rank', 'user_id', 'INTEGER NOT NULL');
+  ensureColumn('unlocks', 'user_id', 'INTEGER NOT NULL');
 } catch (e) {
   console.error('Migration error:', e);
 }
